@@ -1,0 +1,66 @@
+ENTRY_POINT = 0xc0001500
+AS = nasm
+CC = gcc
+LD = ld
+LIB = -I $(ROOT_DIR)/lib/ -I $(ROOT_DIR)/lib/kernel/ -I $(ROOT_DIR)/lib/user/ -I $(ROOT_DIR)/kernel/ -I $(ROOT_DIR)/device/ -I $(ROOT_DIR)/thread/ -I $(ROOT_DIR)/userprog/ -I $(ROOT_DIR)/fs/ -I $(ROOT_DIR)/shell/
+ASFLAGS = -f elf
+CFLAGS = -m32 -Wall $(LIB) -c -fno-builtin -W -Wstrict-prototypes -Wmissing-prototypes
+LDFLAGS = -m elf_i386 -Ttext $(ENTRY_POINT) -e main -Map kernel.map
+
+SUBDIRS = lib kernel device thread userprog fs shell
+ROOT_DIR = $(shell pwd)
+BUILD_DIR = build
+BIN = kernel.bin
+
+CUR_SOURCE_C = ${wildcard *.c}
+CUR_OBJS_C = ${patsubst %.c, %.o, $(CUR_SOURCE_C)}
+CUR_SOURCE_S = ${wildcard *.S}
+CUR_OBJS_S = ${patsubst %.S, %.o, $(CUR_SOURCE_S)}
+
+export AS CC LD ASFLAGS CFLAGS LDFLAGS BIN BUILD_DIR ROOT_DIR OBJS_C OBJS_S
+
+SRCS_C = $(foreach dir, $(shell find $(SUBDIRS)), $(wildcard $(dir)/*.c))
+SRCS_S = $(foreach dir, $(shell find $(SUBDIRS)), $(wildcard $(dir)/*.S))
+OBJS_C_ = $(patsubst %.c, %.o, $(SRCS_C))
+OBJS_S_ = $(patsubst %.S, %.o, $(SRCS_S))
+OBJS_C = $(notdir $(OBJS_C_))
+OBJS_S = $(notdir $(OBJS_S_))
+
+#OBJS_C = $(addprefix $(BUILD_DIR)/, $(notdir $(OBJS_C_)))
+#OBJS_S = $(addprefix $(BUILD_DIR)/, $(notdir $(OBJS_S_)))
+
+
+##########C##########
+$(OBJS_C):%.o:
+	for src in $(SRCS_C); do \
+		echo ${notdir ${patsubst %.c, %.o, $$src}}; \
+		#if [[ $(notdir $(patsubst %.c, %.o, $$src)) = $@ ]];then $(CC) $(CFLAGS) $< -o $(BUILD_DIR)/$@; fi; \
+	done
+
+#########ASM#########
+$(OBJS_S):%.o:
+	for src in $(SRCS_C); do \
+		if [[ $(notdir $(patsubst %.c, %.o, $$src)) = $@ ]];then $(AS) $(ASFLAGS) $< -o $(BUILD_DIR)/$@; fi; \
+	done
+
+#######LINK##########
+$(BUILD_DIR)/$(BIN): $(OBJS_C) #$(OBJS_S)
+	$(LD) $(LDFLAGS) $^ -o $@
+
+mkdir:
+	if [[ ! -d $(BUILD_DIR) ]];then mkdir $(BUILD_DIR); fi
+
+build: $(BUILD_DIR)/$(BIN)
+	make -C $(BUILD_DIR)
+
+hd:
+#	dd if=./build/MBR.bin of=./hd60M.img bs=512 count=1 seek=0 conv=notrunc
+#	dd if=./build/loader.bin of=./hd60M.img bs=512 count=3 seek=2 conv=notrunc
+	dd if=$(ROOT_DIR)/$(BUILD_DIR)/$(BIN) of=./hd60M.img bs=512 count=200 seek=9 conv=notrunc
+
+all: mkdir build hd
+
+clean:
+	rm -f $(BUILD_DIR)/*.o
+	rm -f $(BUILD_DIR)/kernel.bin
+	rm -f $(BUILD_DIR)/*.map
